@@ -1,0 +1,643 @@
+diff --git a/floppy/Makefile b/floppy/Makefile
+index 3d53855..4305404 100644
+--- a/floppy/Makefile
++++ b/floppy/Makefile
+@@ -1,8 +1,18 @@
+-all: test
++#should be statically linked since the disk image used by the VM may not support the dynamic libraries needed by your program
++all: test exp1 exp2 exp3
+ 
+ test: test.c
+ 	gcc -static -o test test.c
+ 
++exp1: exp1.c
++	gcc -static -o exp1 exp1.c 
++
++exp2: exp2.c
++	gcc -static -o exp2 exp2.c
++
++exp3: exp3.c
++	gcc -static -o exp3 exp3.c
++
+ clean:
+-	rm -f test
++	rm -rf test exp1 exp2 exp3
+ 
+diff --git a/floppy/exp1.c b/floppy/exp1.c
+new file mode 100644
+index 0000000..42c2a10
+--- /dev/null
++++ b/floppy/exp1.c
+@@ -0,0 +1,13 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <linux/unistd.h>
++#include <sys/syscall.h>
++
++
++int main (int argc, char ** argv) {
++    pid_t pid = getpid();
++    printf("pid: %d\n",pid);
++    sleep(100);
++    return 0;
++}
+diff --git a/floppy/exp2.c b/floppy/exp2.c
+new file mode 100644
+index 0000000..3c67477
+--- /dev/null
++++ b/floppy/exp2.c
+@@ -0,0 +1,69 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <linux/unistd.h>
++#include <sys/syscall.h>
++#include <string.h>
++struct prinfo {
++    long state; /* current state of process */
++    pid_t pid; /* process id (input) */
++    pid_t parent_pid; /* process id of parent */
++    pid_t youngest_child_pid; /* process id of youngest child */
++    pid_t younger_sibling_pid; /* pid of the oldest among younger siblings */
++    pid_t older_sibling_pid; /* pid of the youngest among older siblings */
++    unsigned long start_time; /* process start time */
++    unsigned long user_time; /* CPU time spent in user mode */
++    unsigned long sys_time; /* CPU time spent in system mode */
++    unsigned long cutime; /* total user time of children */
++    unsigned long cstime; /* total system time of children */
++    long uid; /* user id of process owner */
++    char comm[16]; /* name of program executed */
++    unsigned long signal; /* The set of pending signals */
++    unsigned long num_open_fds; /* Number of open file descriptors */
++};
++
++void print_prinfo(struct prinfo* );
++
++int main (int argc, char ** argv) {
++    struct prinfo *info;
++
++    if((info = malloc(sizeof(struct prinfo))) == NULL){
++        printf("Error: malloc");
++        return 1;
++    }
++    /*calls system call with its own pid as input and prints out it own state*/
++	info->pid = getpid();
++    
++    int ret = syscall(181, info);
++    if(ret!=0){
++        printf("Error: %s\n",strerror(ret));
++        return -1;
++    }
++    
++    print_prinfo(info);
++
++	/* Exit the program */
++	return 0;
++}
++
++void print_prinfo(struct prinfo* info) {
++    
++    printf("Value of state: %ld\n", info->state);
++    printf("Value of pid: %d\n",info->pid);
++    printf("Value of parent_pid: %d\n", info->parent_pid);
++    printf("Value of youngest_child_pid: %d\n", info->youngest_child_pid);
++    printf("Value of younger_sibling_pid: %d\n", info->younger_sibling_pid);
++    printf("Value of older_sibling_pid: %d\n", info->older_sibling_pid);
++    printf("Value of start_time: %ld\n", info->start_time);
++    printf("Value of user_time: %ld\n", info->user_time);
++    printf("Value of sys_time: %ld\n", info->sys_time);
++    printf("Value of cutime: %ld\n", info->cutime);
++    printf("Value of cstime: %ld\n", info->cstime);
++    printf("Value of uid: %ld\n", info->uid);
++    printf("Value of comm: %s\n", info->comm);
++    printf("Value of signal: %ld\n", info->signal);
++    printf("Value of num_open_fds: %ld\n", info->num_open_fds);
++    
++}
++
++
+diff --git a/floppy/exp3.c b/floppy/exp3.c
+new file mode 100644
+index 0000000..f72e366
+--- /dev/null
++++ b/floppy/exp3.c
+@@ -0,0 +1,58 @@
++#include <stdio.h>
++#include <signal.h>
++#include <unistd.h>
++#include <stdlib.h>
++#include <linux/unistd.h>
++#include <sys/syscall.h>
++
++struct prinfo {
++    long state; /* current state of process */
++    pid_t pid; /* process id (input) */
++    pid_t parent_pid; /* process id of parent */
++    pid_t youngest_child_pid; /* process id of youngest child */
++    pid_t younger_sibling_pid; /* pid of the oldest among younger siblings */
++    pid_t older_sibling_pid; /* pid of the youngest among older siblings */
++    unsigned long start_time; /* process start time */
++    unsigned long user_time; /* CPU time spent in user mode */
++    unsigned long sys_time; /* CPU time spent in system mode */
++    unsigned long cutime; /* total user time of children */
++    unsigned long cstime; /* total system time of children */
++    long uid; /* user id of process owner */
++    char comm[16]; /* name of program executed */
++    unsigned long signal; /* The set of pending signals */
++    unsigned long num_open_fds; /* Number of open file descriptors */
++};
++
++
++int main(int argc, char ** argv){
++    
++    struct prinfo* info;
++    
++    info = malloc(sizeof(struct prinfo));
++    /*prints out its process ID*/
++    info->pid = getpid();
++    printf("pid: %d\n",info->pid);
++    
++    sigset_t base_mask;
++    sigemptyset(&base_mask);
++    
++    /* set signals we want to block */
++    sigaddset(&base_mask, SIGUSR2);
++    sigprocmask(SIG_SETMASK, &base_mask, NULL);
++    
++    /*sends SIGUSR2 to itself two times*/
++    kill(info->pid,SIGUSR2);
++    kill(info->pid,SIGUSR2);
++    
++    /*stop the signal*/
++    kill(info->pid, SIGTSTP);
++    
++    
++    return 0;
++}
++
++
++
++
++
++
+diff --git a/floppy/test b/floppy/test
+new file mode 100644
+index 0000000..0dc2c30
+Binary files /dev/null and b/floppy/test differ
+diff --git a/floppy/test.c b/floppy/test.c
+index 39c8a5c..d768e45 100644
+--- a/floppy/test.c
++++ b/floppy/test.c
+@@ -1,9 +1,29 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+-
++#include <sys/types.h>
++#include <unistd.h>
+ #include <linux/unistd.h>
+ #include <sys/syscall.h>
+ 
++struct prinfo {
++    long state; /* current state of process */
++    pid_t pid; /* process id (input) */
++    pid_t parent_pid; /* process id of parent */
++    pid_t youngest_child_pid; /* process id of youngest child */
++    pid_t younger_sibling_pid; /* pid of the oldest among younger siblings */
++    pid_t older_sibling_pid; /* pid of the youngest among older siblings */
++    unsigned long start_time; /* process start time */
++    unsigned long user_time; /* CPU time spent in user mode */
++    unsigned long sys_time; /* CPU time spent in system mode */
++    unsigned long cutime; /* total user time of children */
++    unsigned long cstime; /* total system time of children */
++    long uid; /* user id of process owner */
++    char comm[16]; /* name of program executed */
++    unsigned long signal; /* The set of pending signals */
++    unsigned long num_open_fds; /* Number of open file descriptors */
++};
++
++void print_prinfo(struct prinfo* );
+ /*
+  * Function: main()
+  *
+@@ -12,19 +32,48 @@
+  *
+  * Inputs:
+  *   argc - The number of argument with which this program was executed.
+- *   argv - Array of pointers to strings containing the command-line arguments. 
++ *   argv - Array of pointers to strings containing the command-line arguments.
+  *
+  * Return value:
+  *   0 - This program terminated normally.
+  */
+-int
+-main (int argc, char ** argv) {
+-	/* Print a friendly message */
+-	printf ("Hello from User Space!\n");
++int main (int argc, char ** argv) {
++    struct prinfo *info;
++    
++    info = malloc(sizeof(struct prinfo));
++    
++    if (argc == 2) {
++       info->pid = atoi(argv[1]);
++    }
++    else {
++        printf("Error need one argument given: %d", argc);
++        return 0;
++    }
++
++    syscall(181, info);
++    print_prinfo(info);
++    
++    
++    /* Exit the program */
++    return 0;
++}
++
++void print_prinfo(struct prinfo* info) {
+ 
+-	/* Call our new system call */
+-	syscall (181, NULL);
++    printf("Value of state: %ld\n", info->state);
++    printf("Value of pid: %d\n",info->pid);
++    printf("Value of parent_pid: %d\n", info->parent_pid);
++    printf("Value of youngest_child_pid: %d\n", info->youngest_child_pid);
++    printf("Value of younger_sibling_pid: %d\n", info->younger_sibling_pid);
++    printf("Value of older_sibling_pid: %d\n", info->older_sibling_pid);
++    printf("Value of start_time: %ld\n", info->start_time);
++    printf("Value of user_time: %ld\n", info->user_time);
++    printf("Value of sys_time: %ld\n", info->sys_time);
++    printf("Value of cutime: %ld\n", info->cutime);
++    printf("Value of cstime: %ld\n", info->cstime);
++    printf("Value of uid: %ld\n", info->uid);
++    printf("Value of comm: %s\n", info->comm);
++    printf("Value of signal: %ld\n", info->signal);
++    printf("Value of num_open_fds: %ld\n", info->num_open_fds);
+ 
+-	/* Exit the program */
+-	return 0;
+ }
+diff --git a/linux-3.18.42/Makefile b/linux-3.18.42/Makefile
+index dafc1ea..1d08a3c 100644
+--- a/linux-3.18.42/Makefile
++++ b/linux-3.18.42/Makefile
+@@ -878,7 +878,7 @@ export mod_sign_cmd
+ 
+ 
+ ifeq ($(KBUILD_EXTMOD),)
+-core-y		+= kernel/ mm/ fs/ ipc/ security/ crypto/ block/
++core-y		+= kernel/ mm/ fs/ ipc/ security/ crypto/ block/ prinfo/
+ 
+ vmlinux-dirs	:= $(patsubst %/,%,$(filter %/, $(init-y) $(init-m) \
+ 		     $(core-y) $(core-m) $(drivers-y) $(drivers-m) \
+diff --git a/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl b/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl
+index 281150b..cf6f58b 100644
+--- a/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl
++++ b/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl
+@@ -187,7 +187,7 @@
+ 178	64	query_module
+ 179	common	quotactl		sys_quotactl
+ 180	64	nfsservctl
+-181	common	getpmsg
++181	common	prinfo			sys_prinfo
+ 182	common	putpmsg
+ 183	common	afs_syscall
+ 184	common	tuxcall
+diff --git a/linux-3.18.42/include/linux/prinfo.h b/linux-3.18.42/include/linux/prinfo.h
+new file mode 100644
+index 0000000..ac24206
+--- /dev/null
++++ b/linux-3.18.42/include/linux/prinfo.h
+@@ -0,0 +1,21 @@
++#ifndef _LINUX_PRINFO_H
++#define _LINUX_PRINFO_H
++struct prinfo {
++	 long state; /* current state of process */
++	 pid_t pid; /* process id (input) */
++	 pid_t parent_pid; /* process id of parent */
++	 pid_t youngest_child_pid; /* process id of youngest child */
++ 	 pid_t younger_sibling_pid; /* pid of the oldest among younger siblings */
++	 pid_t older_sibling_pid; /* pid of the youngest among older siblings */
++	 unsigned long start_time; /* process start time */
++	 unsigned long user_time; /* CPU time spent in user mode */
++	 unsigned long sys_time; /* CPU time spent in system mode */
++	 unsigned long cutime; /* total user time of children */
++	 unsigned long cstime; /* total system time of children */
++	 long uid; /* user id of process owner */
++	 char comm[16]; /* name of program executed */
++	 unsigned long signal; /* The set of pending signals */
++	 unsigned long num_open_fds; /* Number of open file descriptors */
++};
++
++#endif
+\ No newline at end of file
+diff --git a/linux-3.18.42/include/linux/syscalls.h b/linux-3.18.42/include/linux/syscalls.h
+index bda9b81..3af77b6 100644
+--- a/linux-3.18.42/include/linux/syscalls.h
++++ b/linux-3.18.42/include/linux/syscalls.h
+@@ -79,7 +79,7 @@ union bpf_attr;
+ #include <linux/quota.h>
+ #include <linux/key.h>
+ #include <trace/syscall.h>
+-
++#include <linux/prinfo.h>
+ /*
+  * __MAP - apply a macro to syscall arguments
+  * __MAP(n, m, t1, a1, t2, a2, ..., tn, an) will expand to
+@@ -877,4 +877,5 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
+ asmlinkage long sys_getrandom(char __user *buf, size_t count,
+ 			      unsigned int flags);
+ asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
++asmlinkage long sys_prinfo(struct prinfo *info);
+ #endif
+diff --git a/linux-3.18.42/prinfo/Makefile b/linux-3.18.42/prinfo/Makefile
+new file mode 100644
+index 0000000..6f133f0
+--- /dev/null
++++ b/linux-3.18.42/prinfo/Makefile
+@@ -0,0 +1,5 @@
++#Makefile start
++
++obj-y := prinfo.o
++
++#Makefile end
+diff --git a/linux-3.18.42/prinfo/prinfo.c b/linux-3.18.42/prinfo/prinfo.c
+new file mode 100644
+index 0000000..b7c25e7
+--- /dev/null
++++ b/linux-3.18.42/prinfo/prinfo.c
+@@ -0,0 +1,269 @@
++#include <linux/kernel.h>
++#include <linux/prinfo.h>
++#include <linux/syscalls.h>
++#include <linux/uaccess.h>
++#include <linux/pid.h>
++#include <linux/sched.h>
++#include <linux/slab.h>
++#include <asm/errno.h>
++#include <linux/fdtable.h>
++#include <linux/signal.h>
++#include <linux/times.h>
++#include <asm/unistd.h>
++#include <asm/current.h>
++#include <linux/types.h>
++#include <linux/list.h>
++
++
++/*helper function for sys_prinfo see their full decleartions
++   for further description about them*/
++pid_t find_youngest_child_pid(struct task_struct *task);
++pid_t find_younger_sibling_pid(struct task_struct *task);
++pid_t find_older_sibling_pid(struct task_struct *task);
++unsigned long get_children_user_time(struct task_struct *task);
++unsigned long get_children_sys_time(struct task_struct *task);
++unsigned long number_open_fds(struct files_struct *files);
++
++
++/*
++ * System call: sys_prinfo
++ * Number: 181
++ *
++ * Description:
++ *  takes in a struct prinfo pointer that should contain a pid
++ *  then fills in the fields of prinfo from the task_struct
++ *  that corresponds to the given pid
++ *
++ * Inputs:
++ *  info - struct prinfo pointer supplied by user to be filled in
++ *
++ *  Return values:
++ *      EINVAL - info was null, or there was no task_struct that matched
++ *               the given pid
++ *      EFUALT - info pointed to faulty memory
++ *      0      - succesful execution
++ * */
++
++
++
++SYSCALL_DEFINE1(prinfo, struct prinfo *, info) {
++    struct prinfo *k_info;
++    struct task_struct *task;
++    
++    
++    
++    /*return EINVAL if the input prinfo structure is NULL*/
++    if (info == NULL) {
++        return EINVAL;
++    }
++    /*return EFAULT id allocation failed*/
++    k_info = kmalloc(sizeof(struct prinfo), GFP_KERNEL); /*This is the prinfo struct the kernel will fill out*/
++    if(k_info == NULL){
++        return EFAULT;
++    }
++    /*validate pointer from user*/
++    if (copy_from_user(k_info, info, sizeof(struct prinfo)) != 0){
++        return EFAULT;
++    }
++    task = get_pid_task(find_get_pid(k_info->pid),PIDTYPE_PID);
++   
++    /*process ID queried does not exist*/
++    if (task == NULL) {
++        return EINVAL;
++    }
++    
++    /*fill in fields from task may have to call helepr functions*/
++    k_info->state = task->state;
++    
++    k_info->pid = task->pid;
++
++    k_info->parent_pid = task->parent->pid;
++    
++    k_info->youngest_child_pid = find_youngest_child_pid(task);
++    
++    k_info->younger_sibling_pid  = find_younger_sibling_pid(task);
++   
++    k_info->older_sibling_pid = find_older_sibling_pid(task);
++    
++    k_info->start_time  = task->start_time;
++    
++    k_info->user_time = task->utime;
++    
++    k_info->sys_time = task->stime;
++    
++    k_info->cutime = get_children_user_time(task);
++    
++    k_info->cstime = get_children_sys_time(task);
++
++    k_info->uid = (long) task->cred->uid.val;
++    
++    /*command name, we need to truncate the program name to 15 bytes and 
++     *unconditionally add a string terminator byte to the comm field
++     */
++    strncpy(k_info->comm, task->comm, 15);
++    k_info->comm[15] = '\0';
++    
++    k_info->signal = task->signal->shared_pending.signal.sig[0];
++    
++    k_info->num_open_fds = number_open_fds(task->files);
++    
++   if (copy_to_user(info, k_info, sizeof(struct prinfo)) != 0){
++        return EFAULT; 
++    }
++    
++    return 0;
++}
++
++/*
++ * Funtion: number_open_fds
++ * 
++ * Description:
++ *  returns number of open file descriptors from the given files_struct
++ *
++ * Inputs:
++ *  files - A pointer to a files_struct containing the open files to be
++ *  enumerated
++ *
++ *  Return value:
++ *    i - a long representing the number of open file descriptors
++ *
++ */
++unsigned long number_open_fds(struct files_struct *files) {
++    int i = 0;
++    struct fdtable *files_table;
++       
++    files_table = files_fdtable(files);
++    
++    while(files_table->fd[i] != NULL) {
++        i++;
++    }
++
++    return (long) i;
++}
++
++/*
++ * Function: find_youngest_child_pid
++ *
++ * Desicription:
++ *  returns pid of youngest child in the given task_struct
++ *
++ * Inputs:
++ *   task - pointer to a task_struct to find the youngest child of
++ *
++ *  Return value:
++ *    pid of the youngest child or -1 if there were no children of the given process
++ *  */
++pid_t find_youngest_child_pid(struct task_struct *task) {
++    struct task_struct *cur, *cur_youngest = NULL;
++   
++    list_for_each_entry(cur, &(task->children),sibling) {
++        if(cur->parent != task) continue; //sanity check
++        if(timespec_compare(&cur->start_time,&cur_youngest->start_time)>0){
++            cur_youngest = cur;
++        }
++    }
++
++    return cur_youngest? cur_youngest->pid:-1;
++}
++
++/*
++ * Function: find_younger_sibling_pid
++ *
++ * Description:
++ *  returns pid of oldest amongst the younger siblings
++ *
++ * Inputs:
++ *   task - pointer to a task_struct to find the younger sibling
++ *
++ * Return value:
++ *  pid of the oldest amongth the younger siblings
++ *  of the supplied task_struct
++ */
++pid_t find_younger_sibling_pid(struct task_struct *task) {
++    struct task_struct *cur, *cur_younger = NULL;
++   
++    list_for_each_entry(cur, &(task->sibling),sibling) {
++        if(cur->parent != task->parent) continue; //sanity check
++        if(timespec_compare(&cur->start_time,&task->start_time)>0 && (cur_younger? timespec_compare(&cur->start_time,&cur_younger->start_time)<0:true)) {
++            cur_younger = cur;
++        }
++    }
++    
++    return cur_younger? cur_younger->pid:-1;
++}
++
++/*
++ * Function: find_older_sibling_pid
++ *
++ * Description:
++ *  returns pid of youngest amongst the older siblings
++ *
++ * Inputs:
++ *   task - pointer to a task_struct to find older sibling
++ *
++ * Return value:
++ *  pid of the youngest amongth the older siblings
++ *  of the supplied task_struct
++ */
++pid_t find_older_sibling_pid(struct task_struct *task) {
++    struct task_struct *cur, *cur_older = NULL;
++    
++    list_for_each_entry(cur, &task->sibling,sibling) {
++        if(cur->parent != task->parent) continue; //sanity check
++        if(timespec_compare(&cur->start_time,&task->start_time)<0 && (cur_older? timespec_compare(&cur->start_time,&cur_older->start_time)>0:true)) {
++            cur_older = cur;
++        }
++    }
++    
++    return (cur_older)? cur_older->pid:-1;
++}
++
++/*
++ * Function: get_children_user_time
++ *
++ * Description:
++ *  returns the user time of all children
++ *
++ * Inputs: 
++ *  task - pointer to a task_struct to find the aggregate children user time
++ *
++ * Return value:
++ *   children_user_time - an unsigned long of all children user time   
++ */
++unsigned long get_children_user_time(struct task_struct *task) {
++    struct task_struct *current_child;
++    unsigned long children_user_time = 0;
++    struct list_head *list;
++    
++    list_for_each(list, &task->children) {
++        current_child = list_entry(list, struct task_struct, sibling);
++        children_user_time += current_child->utime;    
++    }
++    
++    return children_user_time;
++}    
++
++/*
++ * Function: get_children_system_time
++ *
++ * Description:
++ *  returns the system time of all children
++ *
++ * Inputs: 
++ *  task - pointer to a task_struct to find the aggregate children system time
++ *
++ * Return value:
++ *   children_system_time - an unsigned long of all children user time   
++ */
++unsigned long get_children_sys_time(struct task_struct *task) {
++    struct task_struct *current_child;
++    unsigned long children_sys_time = 0;
++    struct list_head *list;
++    
++    list_for_each(list, &task->children) {
++        current_child = list_entry(list, struct task_struct, sibling);
++        children_sys_time += current_child->stime;    
++    }
++    
++    return children_sys_time;
++}
+diff --git a/openwrt-15.05-x86-generic-combined-ext4.img b/openwrt-15.05-x86-generic-combined-ext4.img
+new file mode 100644
+index 0000000..ef488ca
+Binary files /dev/null and b/openwrt-15.05-x86-generic-combined-ext4.img differ
