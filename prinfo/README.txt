@@ -8,20 +8,20 @@ poweroff #shutdown
 mount -t msdos /dev/fd0 /mnt #importing files into the QEMU virtual machine
 
 ************* Files modified or added to the kernel source code *******
-1. linux-3.18.42/arch/x86/syscalls/syscall_64.tbl
-deleted “181	common	getpmsg”
-added “181	common	prinfo	sys_prinfo”
-2. Added “prinfo.h” to ~/linux256/linux-3.18.42/include/linux
-3. Created prinfo folder in ~/linux256/linux-3.18.42 and add “prinfo.c” to it
-4. Added “Makefile” to ~/linux256/linux-3.18.42
-5. In “~/linux256/linux-3.18.42/include/linux/syscalls.h” 
-Added “include<linux/prinfo.h>”
-Added “asmlinkage long sys_prinfo(struct prinfo *info)”;
+1. Modify “syscall_64.tbl” in linux-3.18.42/arch/x86/syscalls
+2. Add “prinfo.h” to ~/linux256/linux-3.18.42/include/linux
+3. Creat prinfo folder in ~/linux256/linux-3.18.42 and add “prinfo.c”,”Makefile”
+4. Modify “Makefile” in ~/linux256/linux-3.18.42
+5. Modify “syscalls.h” in ~/linux256/linux-3.18.42/include/linux
+
 
 ************* Job Description ********************
 Tiecheng Su:
-implemented “youngest_child_pid”, “younger_sibling_pid”,”older_sibling”, also test, exp1, exp2 and exp3.
+implement “state”,”pid”,”parent_pid”,“youngest_child_pid”, “younger_sibling_pid”,”older_sibling” also test, exp1, exp2 and exp3.
 
+Yiming Huang:
+modify “syscalls_64.tbl”,”syscalls.h”,“Makefile”, add“prinfo.h”
+fetch “uid”,”start_time”,”user_time”,”sys_time”,”cutime”,”cstime”,”comm”,”num_open_fds”,”signal”.
 
 
 ************* Experiments Results ****************
@@ -122,6 +122,7 @@ Value of uid: 0
 Value of comm: exp3
 Value of signal: 2048
 Value of num_open_fds: 3
+
 The value is 2048
 The reason why signals cannot be queued is that Linux system use an array to store pending signal. If the signal is pending, the corresponding bit is set to 1. Otherwise, it’s 0. Therefore, pending signals of the same type are not queued, but discarded.
 
