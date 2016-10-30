@@ -23,6 +23,10 @@ index 3d53855..4305404 100644
 -	rm -f test
 +	rm -rf test exp1 exp2 exp3
  
+diff --git a/floppy/exp1 b/floppy/exp1
+new file mode 100755
+index 0000000..1423e98
+Binary files /dev/null and b/floppy/exp1 differ
 diff --git a/floppy/exp1.c b/floppy/exp1.c
 new file mode 100644
 index 0000000..42c2a10
@@ -42,6 +46,10 @@ index 0000000..42c2a10
 +    sleep(100);
 +    return 0;
 +}
+diff --git a/floppy/exp2 b/floppy/exp2
+new file mode 100755
+index 0000000..33d7135
+Binary files /dev/null and b/floppy/exp2 differ
 diff --git a/floppy/exp2.c b/floppy/exp2.c
 new file mode 100644
 index 0000000..3c67477
@@ -117,6 +125,10 @@ index 0000000..3c67477
 +}
 +
 +
+diff --git a/floppy/exp3 b/floppy/exp3
+new file mode 100755
+index 0000000..d29b0f6
+Binary files /dev/null and b/floppy/exp3 differ
 diff --git a/floppy/exp3.c b/floppy/exp3.c
 new file mode 100644
 index 0000000..f72e366
@@ -182,7 +194,7 @@ index 0000000..f72e366
 +
 +
 diff --git a/floppy/test b/floppy/test
-new file mode 100644
+new file mode 100755
 index 0000000..0dc2c30
 Binary files /dev/null and b/floppy/test differ
 diff --git a/floppy/test.c b/floppy/test.c
@@ -333,19 +345,18 @@ index 0000000..ac24206
 +#endif
 \ No newline at end of file
 diff --git a/linux-3.18.42/include/linux/syscalls.h b/linux-3.18.42/include/linux/syscalls.h
-index bda9b81..3af77b6 100644
+index bda9b81..1e02f79 100644
 --- a/linux-3.18.42/include/linux/syscalls.h
 +++ b/linux-3.18.42/include/linux/syscalls.h
-@@ -79,7 +79,7 @@ union bpf_attr;
+@@ -79,6 +79,7 @@ union bpf_attr;
  #include <linux/quota.h>
  #include <linux/key.h>
  #include <trace/syscall.h>
--
 +#include <linux/prinfo.h>
+ 
  /*
   * __MAP - apply a macro to syscall arguments
-  * __MAP(n, m, t1, a1, t2, a2, ..., tn, an) will expand to
-@@ -877,4 +877,5 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
+@@ -877,4 +878,5 @@ asmlinkage long sys_seccomp(unsigned int op, unsigned int flags,
  asmlinkage long sys_getrandom(char __user *buf, size_t count,
  			      unsigned int flags);
  asmlinkage long sys_bpf(int cmd, union bpf_attr *attr, unsigned int size);
@@ -637,7 +648,3 @@ index 0000000..b7c25e7
 +    
 +    return children_sys_time;
 +}
-diff --git a/openwrt-15.05-x86-generic-combined-ext4.img b/openwrt-15.05-x86-generic-combined-ext4.img
-new file mode 100644
-index 0000000..ef488ca
-Binary files /dev/null and b/openwrt-15.05-x86-generic-combined-ext4.img differ
