@@ -107,9 +107,10 @@ SYSCALL_DEFINE1(prinfo, struct prinfo *, info) {
     
     k_info->num_open_fds = number_open_fds(task->files);
     
-   if (copy_to_user(info, k_info, sizeof(struct prinfo)) != 0){
+    if(copy_to_user(info, k_info, sizeof(struct prinfo))){
         return EFAULT; 
     }
+    kfree(k_info);
     
     return 0;
 }
@@ -128,17 +129,25 @@ SYSCALL_DEFINE1(prinfo, struct prinfo *, info) {
  *    i - a long representing the number of open file descriptors
  *
  */
-unsigned long number_open_fds(struct files_struct *files) {
-    int i = 0;
-    struct fdtable *files_table;
-       
-    files_table = files_fdtable(files);
-    
-    while(files_table->fd[i] != NULL) {
-        i++;
-    }
 
-    return (long) i;
+
+unsigned long number_open_fds(struct file_struct *files){
+    int i = 0;
+    unsigned long t = 0;
+    int count = 0;
+    struct fdtable *fdt;
+    fdt = files_fdtable(files);
+    int n = fdt->max_fds/BITS_PER_LONG;
+    unsigned long *open_fd = fdt->open_fds;
+    /* each bit in t represents whether file is open */
+    for(int i=0; i<n; i++){
+        t = open_fd[i];
+        while(t>0){
+            count += t&1;
+            t>>=1;
+        }
+    }
+    return count;
 }
 
 /*

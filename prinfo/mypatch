@@ -23,10 +23,6 @@ index 3d53855..4305404 100644
 -	rm -f test
 +	rm -rf test exp1 exp2 exp3
  
-diff --git a/floppy/exp1 b/floppy/exp1
-new file mode 100755
-index 0000000..1423e98
-Binary files /dev/null and b/floppy/exp1 differ
 diff --git a/floppy/exp1.c b/floppy/exp1.c
 new file mode 100644
 index 0000000..42c2a10
@@ -375,10 +371,10 @@ index 0000000..6f133f0
 +#Makefile end
 diff --git a/linux-3.18.42/prinfo/prinfo.c b/linux-3.18.42/prinfo/prinfo.c
 new file mode 100644
-index 0000000..b7c25e7
+index 0000000..1ac4f19
 --- /dev/null
 +++ b/linux-3.18.42/prinfo/prinfo.c
-@@ -0,0 +1,269 @@
+@@ -0,0 +1,278 @@
 +#include <linux/kernel.h>
 +#include <linux/prinfo.h>
 +#include <linux/syscalls.h>
@@ -444,12 +440,14 @@ index 0000000..b7c25e7
 +    }
 +    /*validate pointer from user*/
 +    if (copy_from_user(k_info, info, sizeof(struct prinfo)) != 0){
++        kfree(k_info);
 +        return EFAULT;
 +    }
 +    task = get_pid_task(find_get_pid(k_info->pid),PIDTYPE_PID);
 +   
 +    /*process ID queried does not exist*/
 +    if (task == NULL) {
++        kfree(k_info);
 +        return EINVAL;
 +    }
 +    
@@ -489,9 +487,10 @@ index 0000000..b7c25e7
 +    k_info->num_open_fds = number_open_fds(task->files);
 +    
 +   if (copy_to_user(info, k_info, sizeof(struct prinfo)) != 0){
++        kfree(k_info);
 +        return EFAULT; 
 +    }
-+    
++    kfree(k_info);
 +    return 0;
 +}
 +
@@ -510,16 +509,22 @@ index 0000000..b7c25e7
 + *
 + */
 +unsigned long number_open_fds(struct files_struct *files) {
-+    int i = 0;
-+    struct fdtable *files_table;
-+       
-+    files_table = files_fdtable(files);
-+    
-+    while(files_table->fd[i] != NULL) {
-+        i++;
++    int i;
++    unsigned long t = 0;
++    int count = 0;
++    struct fdtable *fdt;
++    fdt = files_fdtable(files);
++    int n = fdt->max_fds/BITS_PER_LONG;
++    unsigned long *open_fd = fdt->open_fds;
++    /* each bit in t represents whether file is open */
++    for(i=0; i<n; i++){
++        t = open_fd[i];
++        while(t>0){
++            count += t&1;
++            t>>=1;
++        }
 +    }
-+
-+    return (long) i;
++    return count;
 +}
 +
 +/*
