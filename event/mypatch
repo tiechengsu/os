@@ -1,0 +1,1023 @@
+diff --git a/floppy/Makefile b/floppy/Makefile
+index 3d53855..9425dfa 100644
+--- a/floppy/Makefile
++++ b/floppy/Makefile
+@@ -1,7 +1,7 @@
+ all: test
+ 
+ test: test.c
+-	gcc -static -o test test.c
++	gcc -pthread -static -o test test.c
+ 
+ clean:
+ 	rm -f test
+diff --git a/floppy/test.c b/floppy/test.c
+index 39c8a5c..f7da909 100644
+--- a/floppy/test.c
++++ b/floppy/test.c
+@@ -1,30 +1,368 @@
++//
++//  test.c
++
+ #include <stdio.h>
+ #include <stdlib.h>
+-
+-#include <linux/unistd.h>
++#include <unistd.h>
++#include <signal.h>
+ #include <sys/syscall.h>
++#include <sys/types.h>
++#include <sys/wait.h>
++#include <pthread.h>
++
++
++
++void doeventopenTest(void);
++void doeventcloseTest(void);
++void doeventwaitTest(void);
++void doeventsigTest(void);
++void doeventinfoTest(void);
++void doeventchownTest(void);
++void doeventchmodTest(void);
++void doeventstatTest(void);
++void doboundaryTest1(void);
++void doboundaryTest2(void);
++void doboundaryTest3(void);
++void doboundaryTest4(void);
++void doprocesschown(void);
++void *doopen(void *);
++void *doclose(void *);
++
++void main(){
++    int t;
++    while(1){
++        printf("1 : Creates new events\n2 : Destroy the event\n3 : Blocks process\n4 : Unblocks all waiting processes\n5 : event info\n6 : Change own\n7 : Change mode\n8 : event state\n9 : doeventsig while no tasks waiting\n10 : doeventsig while multiple tasks waiting\n11 : multiple events open at once and close\n12 : doeventclose while processes waiting\n13 : Change process own\n0 : exit\n");
++        printf("Input command : ");
++        scanf("%d",&t);
++        switch(t){
++            case 1:
++                doeventopenTest();
++                break;
++            case 2:
++                doeventcloseTest();
++                break;
++            case 3:
++                doeventwaitTest();
++                break;
++            case 4:
++                doeventsigTest();
++                break;
++            case 5:
++                doeventinfoTest();
++                break;
++            case 6:
++                doeventchownTest();
++                break;
++            case 7:
++                doeventchmodTest();
++                break;
++            case 8:
++                doeventstatTest();
++                break;
++            case 9:
++                doboundaryTest1();
++                break;
++            case 10:
++                doboundaryTest2();
++                break;
++            case 11:
++                doboundaryTest3();
++                break;
++            case 12:
++                doboundaryTest4();
++                break;
++            case 13:
++                doprocesschown();
++                break;
++            case 0:
++            default:
++                exit(0);
++        }
++    }
++}
++
++void doprocesschown(){
++    int euid, egid;
++    printf("Input process effective user ID : ");
++    scanf("%d",&euid);
++    printf("Input process effective group ID : ");
++    scanf("%d",&egid);
++    /* change process's euid and egid */
++    if(setegid(egid)){
++        perror("setegid");
++        return;
++    }
++    if(seteuid(euid)){
++        perror("seteuid");
++        return;
++    }
++}
++ 
++/* test syscall 181 */
++void doeventopenTest(){
++    int n, res, eventID;
++    printf("Input the number of events you wanna create : ");
++    scanf("%d",&n);
++    for(int i=0; i<n; i++){
++        eventID = syscall(181);
++        if(eventID==-1) printf("doeventopen fail\n");
++        else printf("%d eventID : %d\n",i+1,eventID);
++    }
++}
++
++/* test syscall 182 */
++void doeventcloseTest(){
++    int eventID, res;
++    
++    printf("euid : %d, egid : %d\n",geteuid(),getegid());
++    
++    printf("Input eventID to close : ");
++    scanf("%d",&eventID);
++    res = syscall(182,eventID);
++    if(res==-1) printf("doeventclose fail\n");
++    else printf("doeventclose sucess\n");
++}
++
++/* test syscall 183 */
++void doeventwaitTest(){
++    pid_t pid;
++    int eventID, res;
++    
++    printf("euid : %d, egid : %d\n",geteuid(),getegid());
++    
++    printf("Input eventID : ");
++    scanf("%d",&eventID);
++    pid = getpid();
++    printf("process ID %d\n",pid);
++    if(fork()==0){
++        res = syscall(183,eventID);
++        if(res==-1) printf("doeventwait fail\n");
++        else printf("doeventwait sucess\n");
++        printf("child exits\n");
++        exit(0);
++    }else{
++        printf("parent continues\n");
++    }
++}
++
++/* test syscall 184 */
++void doeventsigTest(){
++    int eventID, res;
++    
++    printf("euid : %d, egid : %d\n",geteuid(),getegid());
++    
++    printf("Input eventID to signal : ");
++    scanf("%d",&eventID);
++    res = syscall(184,eventID);
++    if(res==-1) printf("doeventsig fail\n");
++    else printf("doeventsig sucess, %d processes are unblocked\n",res);
++}
++
++/* test syscall 185 */
++void doeventinfoTest(){
++    int num;
++    int *eventIDs;
++    int num2;
++    /* use the NULL eventIDs to get the number of active event IDs */
++    num = syscall(185,0,NULL);
++    printf("the number of active event IDs : %d\n",num);
++    /* num2 is the number of integers which the memory pointed to by enventIDs can hold*/
++    printf("Input the size of array : ");
++    scanf("%d",&num2);
++    eventIDs = malloc(sizeof(int)*num2);
++    
++    num2 = syscall(185,num2,eventIDs);
++    /* returns -1 on failure, if num is smaller than the number of active events*/
++    if(num2==-1){
++        printf("doeventinfo fail\n");
++        
++    }
++    for(int i=0; i<num2; i++){
++        printf("event ID: %d\n",eventIDs[i]);
++    }
++}
++/* test syscall 205 */
++void doeventchownTest(){
++    int res, eventID;
++    uid_t UID;
++    gid_t GID;
++    printf("process effective UID: %d\n",geteuid());
++    
++    printf("Input eventID : ");
++    scanf("%d",&eventID);
++    printf("Input UID : ");
++    scanf("%d",&UID);
++    printf("Input GID : ");
++    scanf("%d",&GID);
++    res = syscall(205,eventID,UID,GID);
++    if(res==-1){
++        printf("doeventchown fail\n");
++    }else{
++        printf("doeventchown success\n");
++    }
++}
++/* test syscall 211 */
++void doeventchmodTest(){
++    int res, eventID, UIDFlag, GIDFlag;
++    
++    printf("process effective UID: %d\n",geteuid());
++    
++    printf("Input eventID : ");
++    scanf("%d",&eventID);
++    printf("Input UIDFlag : ");
++    scanf("%d",&UIDFlag);
++    printf("Input GIDFlag : ");
++    scanf("%d",&GIDFlag);
++    res = syscall(211,eventID,UIDFlag,GIDFlag);
++    if(res==-1) printf("doeventchown fail.\n");
++    else printf("doeventchown success.\n");
++}
++
++/* test syscall 214 */
++void doeventstatTest(){
++    int res, eventID;
++    uid_t *UID;
++    gid_t *GID;
++    int *UIDFlag, *GIDFlag;
++    UID = malloc(sizeof(uid_t));
++    GID = malloc(sizeof(gid_t));
++    UIDFlag = malloc(sizeof(int));
++    GIDFlag = malloc(sizeof(int));
++    printf("Input eventID : ");
++    scanf("%d",&eventID);
++    res = syscall(214, eventID, UID, GID, UIDFlag, GIDFlag);
++    if(res==-1) printf("doeventstat fail.\n");
++    else printf("eventID: %d \nUID: %d\nGID: %d\nUIDFlag: %d\nGIDFlag: %d\n",eventID,*UID,*GID,*UIDFlag,*GIDFlag);
++}
++/* test if no tasks waiting when doeventsig() is called */
++void doboundaryTest1(){
++    int eventID,n;
++    printf("create a new event\n");
++    eventID = syscall(181);
++    if(eventID==-1){
++        printf("doeventopen fail\n");
++        return;
++    }
++    printf("no tasks waiting when doeventsig() is called\n");
++    n = syscall(184,eventID);
++    printf("number of processes being signaled: %d\n",n);
++}
++
++/* test multiple tasks waiting when doeventsig() is called */
++void doboundaryTest2(){
++    int eventID, n, res1, res2, res3;
++    printf("create a new event\n");
++    eventID = syscall(181);
++    if(eventID==-1){
++        printf("doeventopen fail\n");
++        return;
++    }
++    if(fork()==0){
++        if(fork()==0){
++            if(fork()==0){
++                res3 = syscall(183,eventID);
++                if(res3==-1){
++                    printf("doeventwait fail\n");
++                    return;
++                }
++                printf("child3 exits\n");
++                exit(0);
++            }else{
++                res2 = syscall(183,eventID);
++                if(res2==-1){
++                    printf("doeventwait fail\n");
++                    return;
++                }
++                printf("child2 exits\n");
++                exit(0);
++            }
++        }else{
++            res1 = syscall(183,eventID);
++            if(res1==-1){
++                printf("doeventwait fail\n");
++                return;
++            }
++            printf("child1 exits\n");
++            exit(0);
++        }
++    }else{
++        sleep(3);
++        n = syscall(184,eventID);
++        if(n==-1){
++            printf("doeventinfo fail\n");
++            return;
++        }
++        printf("multiple tasks waiting when doeventsig() is called\n");
++        printf("number of processes being signaled: %d\n",n);
++    }
++}
++
++int eventIDB[3];
++/* test multiple events open at one time */
++void doboundaryTest3(){
++    long n = 3;
++    pthread_t thread[n];
++    int res;
++    long i, j, k;
++    for(i=0; i<n; i++){
++        pthread_create(&thread[i],NULL,doopen,(void*)i);
++    }
++    for(j=0; j<n; j++){
++        pthread_join(thread[j],NULL);
++    }
++    for(i=0; i<n; i++){
++        pthread_create(&thread[i],NULL,doclose,(void*)i);
++    }
++    for(j=0; j<n; j++){
++        pthread_join(thread[j],NULL);
++    }
++}
++
++void *doopen(void *ptr){
++    long i;
++    i = (long)ptr;
++    eventIDB[i] = syscall(181);
++    if(eventIDB[i]==-1){
++        printf("doeventopen fail\n");
++        pthread_exit(NULL);
++    }
++    printf("event %d open\n",eventIDB[i]);
++}
++
++void *doclose(void *ptr){
++    long i, res;
++    i = (long)ptr;
++    res = syscall(182,eventIDB[i]);
++    if(res==-1){
++        printf("doeventclose fail\n");
++        pthread_exit(NULL);
++    }
++    printf("event %d close\n",eventIDB[i]);
++}
+ 
+-/*
+- * Function: main()
+- *
+- * Description:
+- *   Entry point for this program.
+- *
+- * Inputs:
+- *   argc - The number of argument with which this program was executed.
+- *   argv - Array of pointers to strings containing the command-line arguments. 
+- *
+- * Return value:
+- *   0 - This program terminated normally.
+- */
+-int
+-main (int argc, char ** argv) {
+-	/* Print a friendly message */
+-	printf ("Hello from User Space!\n");
+-
+-	/* Call our new system call */
+-	syscall (181, NULL);
+-
+-	/* Exit the program */
+-	return 0;
++/* test process waiting when doeventclose() is called */
++void doboundaryTest4(){
++    int eventID, res, n, status;
++    printf("create a new event\n");
++    eventID = syscall(181);
++    if(eventID==-1){
++        printf("doeventopen fail\n");
++        return;
++    }
++    
++    if(fork()==0){
++        res = syscall(183,eventID);
++        if(res==-1) printf("doeventwait fail\n");
++        printf("child exits\n");
++        exit(0);
++    }else{
++        sleep(3);
++        n = syscall(182,eventID);
++        if(n==-1){
++            printf("doeventclose fail\n");
++            return;
++        }
++        printf("process waiting when doeventclose() is called\n");
++        printf("number of processes being signaled: %d\n",n);
++    }
+ }
+diff --git a/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl b/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl
+index 281150b..6eacc01 100644
+--- a/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl
++++ b/linux-3.18.42/arch/x86/syscalls/syscall_64.tbl
+@@ -187,11 +187,16 @@
+ 178	64	query_module
+ 179	common	quotactl		sys_quotactl
+ 180	64	nfsservctl
+-181	common	getpmsg
+-182	common	putpmsg
+-183	common	afs_syscall
+-184	common	tuxcall
+-185	common	security
++#181	common	getpmsg
++181	common	doeventopen		sys_doeventopen
++#182	common	putpmsg
++182	common	doeventclose		sys_doeventclose
++#183	common	afs_syscall
++183	common	doeventwait		sys_doeventwait
++#184	common	tuxcall
++184	common	doeventsig		sys_doeventsig
++#185	common	security
++185	common	doeventinfo		sys_doeventinfo
+ 186	common	gettid			sys_gettid
+ 187	common	readahead		sys_readahead
+ 188	common	setxattr		sys_setxattr
+@@ -211,16 +216,19 @@
+ 202	common	futex			sys_futex
+ 203	common	sched_setaffinity	sys_sched_setaffinity
+ 204	common	sched_getaffinity	sys_sched_getaffinity
+-205	64	set_thread_area
++#205	64	set_thread_area
++205	common	doeventchown		sys_doeventchown
+ 206	64	io_setup		sys_io_setup
+ 207	common	io_destroy		sys_io_destroy
+ 208	common	io_getevents		sys_io_getevents
+ 209	64	io_submit		sys_io_submit
+ 210	common	io_cancel		sys_io_cancel
+-211	64	get_thread_area
++#211	64	get_thread_area
++211	common	doeventchmod		sys_doeventchmod
+ 212	common	lookup_dcookie		sys_lookup_dcookie
+ 213	common	epoll_create		sys_epoll_create
+-214	64	epoll_ctl_old
++#214	64	epoll_ctl_old
++214	common	doeventstat		sys_doeventstat
+ 215	64	epoll_wait_old
+ 216	common	remap_file_pages	sys_remap_file_pages
+ 217	common	getdents64		sys_getdents64
+diff --git a/linux-3.18.42/include/linux/event.h b/linux-3.18.42/include/linux/event.h
+new file mode 100644
+index 0000000..06220b6
+--- /dev/null
++++ b/linux-3.18.42/include/linux/event.h
+@@ -0,0 +1,55 @@
++//
++//  event.h
++//  
++//
++//
++
++#ifndef event_h
++#define event_h
++
++#include <linux/types.h>
++#include <linux/wait.h>
++#include <linux/list.h>
++#include <asm/uaccess.h>
++#include <linux/spinlock.h>
++#include <asm/current.h>
++#include <asm/linkage.h>
++#include <linux/cred.h>
++#include <linux/syscalls.h>
++#include <linux/slab.h>
++#include <linux/rwlock_types.h>
++#include <linux/uidgid.h>
++
++struct event{
++    uid_t UID;
++    gid_t GID;
++    int UIDFlag;
++    /* User Signal Enable Bit */
++    int GIDFlag;
++    /* Group Signal Enable Bit */
++    int eventID;
++    struct list_head eventList;
++    /* linked list */
++    wait_queue_head_t wait_queue;
++    /* wait queue of processes waiting on the event.*/
++    
++};
++
++struct event *getEvent(int eventID);
++
++void doeventinit(void);
++
++asmlinkage long sys_doeventopen(void);
++asmlinkage long sys_doeventclose(int eventID);
++asmlinkage long sys_doeventwait(int eventID);
++asmlinkage long sys_doeventsig(int eventID);
++asmlinkage long sys_doeventinfo(int num, int *eventIDs);
++asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID);
++asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag);
++asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFlag, int *GIDFlag);
++
++extern rwlock_t eventLock;
++extern struct event e;
++extern bool event_initialized;
++
++#endif /* event_h */
+diff --git a/linux-3.18.42/init/main.c b/linux-3.18.42/init/main.c
+index 32940a6..f8b0f54 100644
+--- a/linux-3.18.42/init/main.c
++++ b/linux-3.18.42/init/main.c
+@@ -87,6 +87,7 @@
+ 
+ #ifdef CONFIG_X86_LOCAL_APIC
+ #include <asm/smp.h>
++#include <linux/event.h>
+ #endif
+ 
+ static int kernel_init(void *);
+@@ -664,7 +665,7 @@ asmlinkage __visible void __init start_kernel(void)
+ 	cpuset_init();
+ 	taskstats_init_early();
+ 	delayacct_init();
+-
++	doeventinit();
+ 	check_bugs();
+ 
+ 	acpi_subsystem_init();
+diff --git a/linux-3.18.42/kernel/Makefile b/linux-3.18.42/kernel/Makefile
+index 17ea6d4..e0aacd1 100644
+--- a/linux-3.18.42/kernel/Makefile
++++ b/linux-3.18.42/kernel/Makefile
+@@ -11,6 +11,8 @@ obj-y     = fork.o exec_domain.o panic.o \
+ 	    notifier.o ksysfs.o cred.o reboot.o \
+ 	    async.o range.o groups.o smpboot.o
+ 
++obj-y += event.o
++
+ ifdef CONFIG_FUNCTION_TRACER
+ # Do not trace debug files and internal ftrace files
+ CFLAGS_REMOVE_cgroup-debug.o = -pg
+diff --git a/linux-3.18.42/kernel/event.c b/linux-3.18.42/kernel/event.c
+new file mode 100644
+index 0000000..b932f9b
+--- /dev/null
++++ b/linux-3.18.42/kernel/event.c
+@@ -0,0 +1,462 @@
++//  event.c
++
++
++#include <linux/event.h>
++
++struct event e;
++rwlock_t eventLock;
++
++/* A state indicating whether the global_event has been initialized successfully. */
++bool event_initialized;
++void display(void);
++int get_event_length(struct list_head *head);
++/*
++ * call when the system is booted
++ */
++void doeventinit(void){
++    
++    printk("\n Initialized \n");
++    
++    /* INitialize the wait queue , evnt queue */
++    
++    eventLock = __RW_LOCK_UNLOCKED(eventLock);
++    INIT_LIST_HEAD(&e.eventList);
++    e.eventID = 0;
++    init_waitqueue_head(&e.wait_queue);
++    event_initialized = true;
++}
++
++void display(void){
++    struct event *test;
++    int i ;
++    unsigned long flags;
++    i = 0 ;
++    
++    read_lock_irqsave(&eventLock, flags);
++    list_for_each_entry(test, &e.eventList, eventList){
++        i = i +1 ;
++        printk("event no: %d eventID:  %d\n",i,test->eventID);
++        printk("UID: %d GID: %d \n",test->UID,test->GID);
++    }
++    read_unlock_irqrestore(&eventLock,flags);
++}
++
++/* Pass the list as and argument use a pointer pointng to successive
++ * entries in the list and increment the length to get number of
++ * events in the list.
++ */
++int get_event_length(struct list_head* head){
++    int num_event = 0 ;
++    struct list_head *ptr;
++    if(head == NULL){
++        printk("error get_event_length(): \n");
++        return -1;
++    }
++    
++    list_for_each(ptr, head) num_event++;
++    return num_event;
++}
++
++/* get event from eventID */
++struct event *getEvent(int eventID){
++    struct event *p;
++    list_for_each_entry(p, &e.eventList, eventList){
++        if(p->eventID == eventID){
++            return p;
++        }
++    }
++    return (struct event *)NULL;
++}
++
++/* create a new event and assign an event ID to it
++ * Add the new event to event list
++ * Return th event id if event was created successfully
++ * Return -1 on failure to create event
++ */
++asmlinkage long sys_doeventopen(void){
++    int next_id;
++    unsigned long flags;
++    struct event *new_event;
++    if (event_initialized == false) {
++        printk("error sys_doeventopen(): event not initialized\n");
++        return -1;
++    }
++    
++    /* allocating the size to the event created */
++    new_event = kmalloc(sizeof(struct event),GFP_KERNEL);
++    new_event->UID = current->cred->euid.val;
++    new_event->GID = current->cred->egid.val;
++    new_event->UIDFlag = 1;
++    new_event->GIDFlag = 1;
++    
++    /*lock the event to write */
++    write_lock_irqsave(&eventLock, flags);
++    
++    /* Add new event to the tail of the eventlist*/
++    list_add_tail(&(new_event->eventList), &e.eventList);
++    
++    /* find the next event id and increment it by one and assign a new event id */
++    next_id = list_entry((new_event->eventList).prev, struct event,eventList)->eventID;
++    
++    /* Initialize next eventID */
++    new_event->eventID = next_id +1;
++    
++    /* Initialize wait queue */
++    init_waitqueue_head(&(new_event->wait_queue));
++    
++    /* unlock the event queue */
++    write_unlock_irqrestore(&eventLock, flags);
++    
++    printk("UID: %d ,GID: %d, UIDFlag: %d ,GIDFlag: %d\n",new_event->UID,new_event->GID,new_event->UIDFlag,new_event->GIDFlag);
++    printk("Add operation completed\n");
++    /*printk("Hello from deveopen!");
++    printk("next_id : %d\n", next_id);
++    
++    
++    
++    
++    display();*/
++    return new_event->eventID;
++}
++
++asmlinkage long sys_doeventclose(int eventID){
++    unsigned long flags;
++    struct event * req_event;
++    uid_t uid;
++    gid_t gid;
++    int num_proc_signaled;
++    
++    /* check if the event is initialized */
++    if (event_initialized == false) {
++        printk("error sys_doeventclose(): event not initialized\n");
++        return -1;
++    }
++    
++    /* get the event and check if the event is NULL */
++    
++    
++    read_lock_irqsave(&eventLock , flags);
++    req_event = getEvent(eventID);
++    read_unlock_irqrestore(&eventLock, flags);
++    
++    /*check if the event id is NULL */
++    if(req_event == NULL){
++        printk("error sys_doeventclose(): event not found. eventID = %d\n",eventID);
++        return -1;
++    }
++    
++    printk("UID: %d ,GID: %d , UIDFlag: %d ,GIDFlag: %d\n",req_event->UID,req_event->GID,req_event->UIDFlag,req_event->GIDFlag);
++    
++    uid = current->cred->euid.val;
++    gid = current->cred->egid.val;
++    
++    if(uid != 0 &&(uid != req_event->UID || req_event->UIDFlag ==0)&& (gid != req_event->GID || req_event->GIDFlag == 0 )){
++        printk("sys_doeventclose(): access denied\n");
++        return -1 ;
++    }
++    
++    num_proc_signaled = sys_doeventsig(eventID);
++    
++    /* Remove event from the event list */
++    write_lock_irqsave(&eventLock, flags);
++    list_del(&req_event->eventList);
++    write_unlock_irqrestore(&eventLock,flags);
++    
++    kfree(req_event); 
++    printk("Delete operation completed\n");
++    /*display();*/
++    return num_proc_signaled;
++}
++
++
++/* Make the event with eventID wait in the queue
++ * Return 0 on success
++ * Return -1 on failure
++ */
++
++asmlinkage long sys_doeventwait(int eventID){
++    unsigned long flags;
++    uid_t uid;
++    gid_t gid;
++    wait_queue_t wait;
++    struct event * req_event;
++    /* check if the event is initialized */
++    if (event_initialized == false) {
++        printk("error sys_doeventclose(): event not initialized\n");
++        return -1;
++    }
++    
++    /* get the event and check if the event is NULL */
++   
++    
++    read_lock_irqsave(&eventLock , flags);
++    req_event = getEvent(eventID);
++    read_unlock_irqrestore(&eventLock, flags);
++    
++    /*check if the event id is NULL */
++    if(req_event == NULL){
++        printk("error sys_doeventclose(): event not found. eventID = %d\n",eventID);
++        return -1;
++    }
++    printk("UID: %d ,GID: %d , UIDFlag: %d,GIDFlag: %d\n",req_event->UID,req_event->GID,req_event->UIDFlag,req_event->GIDFlag);
++    
++    uid = current->cred->euid.val;
++    gid = current->cred->egid.val;
++    
++    if(uid!=0 &&(uid!=req_event->UID||req_event->UIDFlag==0)&&(gid!=req_event->GID||req_event->GIDFlag==0)){
++        printk("sys_doeventsig(): access denied\n");
++        return -1 ;
++    }
++    
++    init_wait(&wait);
++    
++    prepare_to_wait(&(req_event->wait_queue), &wait, TASK_INTERRUPTIBLE);
++    schedule();
++    finish_wait(&(req_event->wait_queue),&wait);
++    printk("wait success.\n");
++    
++    return 0;
++}
++
++/* Wake up all the tasks waiting in the queue with the given eventID
++ * REmove all events and no events waiting '
++ * Return the number of process signaled
++ * Return -1 on failure
++ */
++
++asmlinkage long sys_doeventsig(int eventID){
++    unsigned long flags;
++    int processes_signaled;
++    uid_t uid;
++    gid_t gid;
++    struct event * req_event;
++    /* check if the event is initialized */
++    if (event_initialized == false) {
++        printk("error sys_doeventsig(): event not initialized\n");
++        return -1;
++    }
++    
++    /* get the event and check if the event is NULL */
++
++    read_lock_irqsave(&eventLock, flags);
++    req_event = getEvent(eventID);
++    read_unlock_irqrestore(&eventLock, flags);
++    
++    /*check if the event id is NULL */
++    if(req_event == NULL){
++        printk("error sys_doeventsig(): event not found. eventID = %d\n",eventID);
++        return -1;
++    }
++    printk("UID: %d ,GID: %d , UIDFlag: %d ,GIDFlag: %d\n",req_event->UID,req_event->GID,req_event->UIDFlag,req_event->GIDFlag);
++    
++    uid = current->cred->euid.val;
++    gid = current->cred->egid.val;
++    
++    if(uid != 0 &&(uid != req_event->UID || req_event->UIDFlag ==0)&& (gid != req_event->GID || req_event->GIDFlag == 0 )){
++        printk("sys_doeventsig(): access denied\n");
++        return -1 ;
++    }
++    
++    /*Unblock all process in the waiting queue and return the no. process signalled */
++    
++    spin_lock_irqsave(&(req_event->wait_queue.lock),flags);
++    
++    processes_signaled = get_event_length(&(req_event->wait_queue.task_list));
++    
++    spin_unlock_irqrestore(&(req_event->wait_queue.lock),flags);
++    
++    wake_up(&(req_event->wait_queue));
++    
++    return processes_signaled;
++}
++
++
++/*
++ * Fills in the array of integers pointed to by eventIDs with current set of active IDs. num is the
++ * number of integers which the memory pointed to by eventIDs can hold. On sucess, doeventinfo() returns the
++ * number of active events; otherwise, it returns -1 on failure.
++ */
++asmlinkage long sys_doeventinfo(int num, int *eventIDs){
++    unsigned long flags1, flags2;
++    struct event *pos;
++    int *sys_eventIDs;
++    int count;
++    int i;
++    if (event_initialized==false) {
++        printk("error sys_doeventopen(): event not initialized\n");
++        return -1;
++    }
++    /* reader-weiter spinlocks */
++    read_lock_irqsave(&eventLock,flags1);
++    /* count event */
++    count = get_event_length(&e.eventList);
++    read_unlock_irqrestore(&eventLock,flags1);
++    
++    /* eventIDs can be NULL, in which case, doeventinfo() returns the number of active event IDs. */
++    if(!eventIDs){
++        return count;
++    /* If num is smaller than the number of active event IDs, then -1 should be returned. */
++    }else if(num<count){
++        printk("Input num is smaller than the number of active eventID\n");
++        return -1;
++    }
++    /* allocate memory to an array to store eventIDs */
++    sys_eventIDs = kmalloc(num*sizeof(int),GFP_KERNEL);
++    if(!sys_eventIDs){
++        kfree(sys_eventIDs);
++        printk("sys_doeventinfo(): kmalloc() error\n");
++        return -1;
++    }
++    if(copy_from_user(sys_eventIDs,eventIDs,num*sizeof(int))){
++        kfree(sys_eventIDs);
++        printk("sys_doeventinfo() : copy_from_user() errot\n");
++        return -1;
++    }
++    
++    read_lock_irqsave(&eventLock,flags2);
++    i = 0;
++    /* don't insert e which eventID is 0 */
++    list_for_each_entry(pos, &e.eventList, eventList){
++        if(pos->eventID){
++            sys_eventIDs[i++] = pos->eventID;
++        }
++    }
++    read_unlock_irqrestore(&eventLock,flags2);
++
++    
++    if(copy_to_user(eventIDs, sys_eventIDs, num*sizeof(int))){
++        printk("sys_doeventinfo(): copy_to_user() error\n");
++        return -1;
++    }
++    kfree(sys_eventIDs);
++    return count;
++    
++}
++
++/*
++ * Change the UID and GID of the event to the specified values; return -1 on failure
++ * a process can modify the UID, GID if its effective UID is zero or matches the event's UID
++ */
++asmlinkage long sys_doeventchown(int eventID, uid_t UID, gid_t GID){
++    uid_t uid;
++    struct event *cur;
++    unsigned long flags;
++    if (event_initialized==false) {
++        printk("error sys_doeventopen(): event not initialized\n");
++        return -1;
++    }
++    uid = current_euid().val;
++    /* reader writer spinlock */
++    read_lock_irqsave(&eventLock, flags);
++    cur = getEvent(eventID);
++    read_unlock_irqrestore(&eventLock, flags);
++    
++    if(!cur){
++        printk("sys_doeventchown: event not found\n");
++        return -1;
++    }
++    
++    if(uid && uid!=cur->UID){
++        printk("sys_doeventchown: failed to access the event %d\n",eventID);
++        return -1;
++    }
++    printk("UID: %d ,GID: %d , UIDFlag: %d ,GIDFlag: %d\n",cur->UID,cur->GID,cur->UIDFlag,cur->GIDFlag);
++    cur->UID = UID;
++    cur->GID = GID;
++    
++    return 0;
++}
++/*
++ * Chang the User Singal Enable Bit to UIDFlag and the Group Signal Enable Bit to GIDFlag;
++ * return -1 on failure.
++ * a process can modify the User Signal Enable Bit, and Group Signal Enable Bit if its 
++ * effective UID is zero or matches the event's UID.
++ */
++asmlinkage long sys_doeventchmod(int eventID, int UIDFlag, int GIDFlag){
++    struct event *cur;
++    unsigned long flags;
++    uid_t uid;
++    if (event_initialized==false) {
++        printk("error sys_doeventopen(): event not initialized\n");
++        return -1;
++    }
++    
++    /* check if UIDFlag or GIDFlag is valid */
++    if(UIDFlag<0||UIDFlag>1){
++        printk("sys_doeventchown: UIDFlag %d is not valid\n",UIDFlag);
++        return -1;
++    }
++    if(GIDFlag<0||GIDFlag>1){
++        printk("sys_doeventchown: GIDFlag %d is not valid\n",GIDFlag);
++        return -1;
++    }
++    uid = current_euid().val;
++    /* reader writer spinlock */
++    read_lock_irqsave(&eventLock, flags);
++    cur = getEvent(eventID);
++    read_unlock_irqrestore(&eventLock, flags);
++    
++    if(!cur){
++        printk("sys_doeventchown: event not found\n");
++        return -1;
++    }
++    if(uid && uid!=cur->UID){
++        printk("sys_doeventchown: failed to access the event %d\n",eventID);
++        return -1;
++    }
++    printk("UID: %d ,GID: %d , UIDFlag: %d ,GIDFlag: %d\n",cur->UID,cur->GID,cur->UIDFlag,cur->GIDFlag);
++    cur->UIDFlag = UIDFlag;
++    cur->GIDFlag = GIDFlag;
++    
++    return 0;
++}
++/*
++ * Place the UID, GID, User Signal Enable Bit, and Group Signal Enable Bit into the memory
++ * pointed to by UID, GID, UIDFlag, and GIDFlag, respectively.
++ */
++asmlinkage long sys_doeventstat(int eventID, uid_t *UID, gid_t *GID, int *UIDFlag, int *GIDFlag){
++    struct event *cur;
++    unsigned long flags;
++    
++    if (event_initialized==false) {
++        printk("error sys_doeventopen(): event not initialized\n");
++        return -1;
++    }
++    /* check validity of pointers */
++    if(!UID||!GID||!UIDFlag||!GIDFlag){
++        printk("sys_doeventstat: pointer is not valid\n");
++        return -1;
++    }
++    
++    /* reader writer spinlock */
++    read_lock_irqsave(&eventLock, flags);
++    cur = getEvent(eventID);
++    read_unlock_irqrestore(&eventLock, flags);
++    
++    if(!cur){
++        printk("sys_doeventchown: event not found\n");
++        return -1;
++    }
++    /* copy to user space */
++    if(copy_to_user(UID, &(cur->UID), sizeof(uid_t))){
++        printk("sys_doeventstat(): copy_to_user() error\n");
++        return -1;
++    }
++    
++    if(copy_to_user(GID, &(cur->GID), sizeof(gid_t))){
++        printk("sys_doeventstat(): copy_to_user() error\n");
++        return -1;
++    }
++    
++    if(copy_to_user(UIDFlag, &(cur->UIDFlag), sizeof(int))){
++        printk("sys_doeventstat(): copy_to_user() error\n");
++        return -1;
++    }
++    
++    if(copy_to_user(GIDFlag, &(cur->GIDFlag), sizeof(int))){
++        printk("sys_doeventstat(): copy_to_user() error\n");
++        return -1;
++    }
++    
++    return 0;
++}
